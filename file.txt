@@ -1,0 +1,202 @@
+document.addEventListener('keydown', function(event) {
+    if (event.ctrlKey && event.code === 'Space' && !event.shiftKey) {
+        console.log('Ctrl + Space pressed. Starting OCR process.');
+
+        const imgElement = document.querySelector('img');
+        const base64Image = imgElement.src;
+
+        if (!base64Image.startsWith('data:image/')) {
+            console.log('Not a valid Base64 image.');
+            return;
+        }
+
+        console.log('Sending image to OCR API...');
+        // Step 1: Send to OCR API
+        fetch('https://api.ocr.space/parse/image', {
+            method: 'POST',
+            headers: {
+                'apikey': 'K85982213588957',  // Your provided API key
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `base64Image=${encodeURIComponent(base64Image)}`
+        })
+        .then(response => {
+            console.log('OCR API responded.');
+            return response.json();
+        })
+        .then(data => {
+            let extractedText = '';
+            if (data && data.ParsedResults && data.ParsedResults.length > 0) {
+                extractedText = data.ParsedResults[0].ParsedText || 'No text found.';
+                console.log('Extracted Text from OCR API:', extractedText);
+
+                // Get the MCQ options and format them
+                const mcq = document.querySelector("#optionCol");
+                const optionsArray = mcq.innerText.trim().split("\n");
+                const optionsWithSerialNumbers = optionsArray.map((option, index) => {
+                    const serialNumber = (index + 1) + ". ";
+                    return serialNumber + option;
+                });
+                const formattedOptions = optionsWithSerialNumbers.join("\n");
+
+                // Concatenate the extracted text with the options
+                const concatenatedText = extractedText + "\n\n" + formattedOptions;
+                console.log('Concatenated text with options:', concatenatedText);
+
+                // Step 2: Send concatenated text to GPT-4 API
+                console.log('Sending concatenated text to GPT-4 API...');
+                fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer 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`  // Replace with your OpenAI API key
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-4o',
+                        messages: [
+                            {
+                                role: 'system',
+                                content: 'You are a helpful assistant. Perform calculations carefully to ensure accuracy. Cross-check the answer to ensure it is correct before providing it.'
+                            },
+                            {
+                                role: 'user',
+                                content: `${concatenatedText}\n\nPlease provide the correct option only. No need for an explanation.please think the question and option carefully and then only responsd`
+                            }
+                        ],
+                        max_tokens: 20,
+                        temperature: 0.0
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('OpenAI API Request Failed');
+                    }
+                    console.log('GPT-4 API responded successfully.');
+                    return response.json();
+                })
+                .then(data => {
+                    const answer = data.choices[0].message.content.trim();
+                    console.log('GPT-4 API returned answer:', answer);
+
+                    // Find the AttemptStatusButton
+                    const attemptButton = document.querySelector(".AttemptStatusButton");
+
+                    if (attemptButton) {
+                        // Store original text
+                        const originalText = attemptButton.innerText;
+
+                        // Change the button text
+                        console.log('Updating AttemptStatusButton with the answer.');
+                        attemptButton.innerText = answer;
+
+                        // Reset after 3 seconds
+                        setTimeout(() => {
+                            attemptButton.innerText = "Answered"; // Set to "Answered"
+                            console.log('AttemptStatusButton reset to "Answered".');
+                        }, 3000);
+                    } else {
+                        console.error("AttemptStatusButton not found.");
+                    }
+
+                })
+                .catch(error => {
+                    console.error("OpenAI API Error:", error);
+                });
+            } else {
+                console.log('No text found or no valid response from the OCR API.');
+            }
+        })
+        .catch(error => {
+            console.error('OCR API Error:', error);
+        });
+    }
+});
+
+// Second script: Triggering with Ctrl + Shift + Space instead of badge click
+document.addEventListener('keydown', (event) => {
+    if (event.ctrlKey && event.shiftKey && event.code === 'Space') {
+        console.log('Command + Shift + Space pressed. Starting question and options processing.');
+
+
+
+        const question = document.querySelector(".col-md-9.col-sm-9.col-xs-12");
+        const mcq = document.querySelector("#optionCol");
+
+        if (question && mcq) {
+            console.log('Question and options found.');
+            const questionText = question.innerText.trim();
+            const optionsArray = mcq.innerText.trim().split("\n");
+            const optionsWithSerialNumbers = optionsArray.map((option, index) => {
+                const serialNumber = (index + 1) + ". ";
+                return serialNumber + option;
+            });
+            const formattedOptions = optionsWithSerialNumbers.join("\n");
+
+            console.log('Copying question and options to clipboard...');
+            navigator.clipboard.writeText(
+                questionText + "\n\n" + formattedOptions + "\n\nPlease provide the correct option only. No need for an explanation."
+            ).then(() => {
+                console.log('Text copied to clipboard successfully. Sending question and options to GPT-4 API...');
+                // OpenAI API call
+                fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer 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`  // Replace with your OpenAI API key
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-4o',
+                        messages: [
+                            {
+                                role: 'system',
+                                content: 'You are a helpful assistant. Cross-check the answer to ensure it is correct before providing it.'
+                            },
+                            {
+                                role: 'user',
+                                content: `${questionText}\n\n${formattedOptions}\n\nPlease provide the correct option only. No need for an explanation. please think the question and option carefully and then only respond`
+                            }
+                        ],
+                        max_tokens: 20,
+                        temperature: 0.0
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('OpenAI API Request Failed');
+                    }
+                    console.log('GPT-4 API responded successfully.');
+                    return response.json();
+                })
+                .then(data => {
+                    const answer = data.choices[0].message.content.trim();
+                    console.log('GPT-4 API returned answer:', answer);
+
+                    // Find the AttemptStatusButton
+                    const attemptButton = document.querySelector(".AttemptStatusButton");
+
+                    if (attemptButton) {
+                        console.log('Updating AttemptStatusButton with the answer.');
+                        attemptButton.innerText = answer;
+
+                        // Reset after 3 seconds
+                        setTimeout(() => {
+                            attemptButton.innerText = "Answered"; // Set to "Answered"
+                            console.log('AttemptStatusButton reset to "Answered".');
+                        }, 3000);
+                    } else {
+                        console.error("AttemptStatusButton not found.");
+                    }
+
+                })
+                .catch(error => {
+                    console.error("OpenAI API Error:", error);
+                });
+
+            }).catch((error) => {
+                console.error("Could not copy to clipboard:", error);
+            });
+        } else {
+            console.error("Question or options not found.");
+        }
+    }
+});
